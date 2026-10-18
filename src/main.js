@@ -92,7 +92,7 @@ function init(){
   // Read-only diagnostics for automated browser checks.
   window.lab={get state(){return {running,finished,elapsed,particles:particles.length,settled:particles.filter(p=>p.settled).length,liquidHeight:liquid.geometry.boundingBox?.max.y??null,estimate:reaction};},estimate};
 }
-function resetCamera(){if(!camera)return;camera.position.set(155,145,190);controls.target.set(0,49,0);controls.update();}
+function resetCamera(){if(!camera)return;camera.position.set(190,260,220);controls.target.set(0,70,0);controls.update();}
 $('camera-reset').addEventListener('click',resetCamera);
 function reset(){running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(11.5);showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';}
 $('reset').addEventListener('click',reset);
@@ -106,7 +106,7 @@ function emit(){
   if(particles.length>=maxParticles)return;
   const angle=Math.random()*Math.PI*2,r=Math.sqrt(Math.random())*1.65;
   const decay=Math.pow(Math.max(0,1-elapsed/reaction.duration),.45);
-  particles.push({x:Math.cos(angle)*r,y:35+Math.random()*2.5,z:Math.sin(angle)*r,vx:0,vz:0,vy:(90+30*reaction.strength)*(.4+.6*decay),r:1.9+Math.random()*.7,age:0,settled:false,slide:0,shade:.82+Math.random()*.3});
+  particles.push({x:Math.cos(angle)*r,y:35+Math.random()*2.5,z:Math.sin(angle)*r,vx:0,vz:0,vy:(80+10*reaction.strength)*(.4+.6*decay),r:1.9+Math.random()*.7,age:0,settled:false,slide:0,shade:.82+Math.random()*.3});
 }
 function tick(dt){
   if(running){
