@@ -7,7 +7,8 @@ const $ = id => document.getElementById(id);
 const inputs = ['h2o2','ki','red','green','blue'];
 const color = new THREE.Color();
 let running = false, finished = false, elapsed = 0, reaction = null;
-let renderer, scene, camera, controls, liquid, foam, flask;
+let renderer, scene, camera, controls, liquid, foam, cylinder;
+const liquidBase=1.8, initialLiquidHeight=31;
 const particles = [], maxParticles = 4800, pile = new Map();
 const dummy = new THREE.Object3D();
 let emission = 0, geometryTimer = 0;
@@ -49,13 +50,10 @@ function showResults(fraction){
   $('weight').innerHTML=`${((reaction?.weight||0)*fraction).toFixed(1)} <em>g</em>`;
 }
 function liquidShape(height){
-  const radius=y=>11.45-(y-1)*.29;
-  const points=[new THREE.Vector2(0,.8),new THREE.Vector2(10.8,.8),new THREE.Vector2(11.45,1)];
-  for(let y=2;y<height;y+=1)points.push(new THREE.Vector2(radius(y),y));
-  points.push(new THREE.Vector2(radius(height),height),new THREE.Vector2(0,height));
+  const points=[[0,liquidBase],[4.7,liquidBase],[4.7,height],[0,height]].map(p=>new THREE.Vector2(...p));
   return new THREE.LatheGeometry(points,64);
 }
-function setLiquid(height){if(!liquid)return;liquid.geometry.dispose();liquid.geometry=liquidShape(Math.max(1.05,height));}
+function setLiquid(height){if(!liquid)return;liquid.geometry.dispose();liquid.geometry=liquidShape(Math.max(liquidBase+.05,height));}
 function foamTexture(){
   const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
   const ctx=canvas.getContext('2d');ctx.fillStyle='#b9b9b9';ctx.fillRect(0,0,128,128);
@@ -78,12 +76,24 @@ function init(){
   const sun=new THREE.DirectionalLight(0xfff4ec,4);sun.position.set(-75,170,90);sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);sun.shadow.camera.left=-130;sun.shadow.camera.right=130;sun.shadow.camera.top=140;sun.shadow.camera.bottom=-130;sun.shadow.camera.far=450;sun.shadow.normalBias=.15;sun.shadow.bias=-.0001;scene.add(sun);
   const fill=new THREE.DirectionalLight(0xffc3e0,1.3);fill.position.set(70,60,-80);scene.add(fill);
   const ground=new THREE.Mesh(new THREE.PlaneGeometry(1000,1000),new THREE.MeshStandardMaterial({color:0xd8d5d6,roughness:.72,metalness:.02}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;ground.position.y=-.15;scene.add(ground);
-  // A real upright Erlenmeyer profile: flat base, curved shoulder, cylindrical neck,
-  // lip and inner wall. Lathe axis is Y; this is not a cone primitive.
-  const profile=[[0,.15],[10.8,.15],[12,.6],[12.5,1.3],[12.4,2.5],[6.0,23],[4.1,26],[3.6,27.5],[3.6,34.2],[4,34.7],[4,35.3],[3.25,35.3],[3.1,34.7],[3.1,27.4],[3.6,25.8],[5.5,22.7],[11.6,2.3],[11.6,1.2],[0,1.2]].map(p=>new THREE.Vector2(...p));
-  flask=new THREE.Mesh(new THREE.LatheGeometry(profile,96),new THREE.MeshPhysicalMaterial({color:0xffffff,transparent:true,opacity:.9,roughness:.12,metalness:.05,clearcoat:1,clearcoatRoughness:.03,transmission:.95,ior:1.5,side:THREE.DoubleSide,depthWrite:false}));flask.castShadow=true;scene.add(flask);
-  const rim=new THREE.Mesh(new THREE.TorusGeometry(3.64,.32,12,80),new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:.12,transmission:.8,transparent:true,opacity:.65,ior:1.5}));rim.rotation.x=Math.PI/2;rim.position.y=35;scene.add(rim);
-  liquid=new THREE.Mesh(liquidShape(11.5),new THREE.MeshPhysicalMaterial({color:0xff4197,roughness:.24,metalness:0,transmission:0,ior:1.34,clearcoat:1}));scene.add(liquid);
+  // Hollow, straight-sided 100 mL graduated cylinder with a broad stable foot.
+  const profile=[[0,.2],[8,.2],[8,.9],[7.7,1.3],[5.25,1.3],[5.25,34.6],[5.65,35],[5.65,35.4],[4.8,35.4],[4.8,1.8],[0,1.8]].map(p=>new THREE.Vector2(...p));
+  cylinder=new THREE.Mesh(new THREE.LatheGeometry(profile,96),new THREE.MeshPhysicalMaterial({color:0xffffff,transparent:true,opacity:.9,roughness:.12,metalness:.05,clearcoat:1,clearcoatRoughness:.03,transmission:.95,ior:1.5,side:THREE.DoubleSide,depthWrite:false}));cylinder.castShadow=true;scene.add(cylinder);
+  const rim=new THREE.Mesh(new THREE.TorusGeometry(5.2,.3,12,80),new THREE.MeshPhysicalMaterial({color:0xffffff,roughness:.12,transmission:.8,transparent:true,opacity:.65,ior:1.5}));rim.rotation.x=Math.PI/2;rim.position.y=35.2;scene.add(rim);
+  const marks=new THREE.Group();marks.name='100 mL graduations';scene.add(marks);
+  const ink=new THREE.LineBasicMaterial({color:0x765669,transparent:true,opacity:.85});
+  for(let ml=5;ml<=100;ml+=5){
+    const y=liquidBase+(initialLiquidHeight-liquidBase)*ml/100;
+    const points=[];for(let j=0;j<=16;j++){const angle=.1+j/16*(ml%10===0?.8:.45);points.push(new THREE.Vector3(Math.sin(angle)*5.3,y,Math.cos(angle)*5.3));}
+    marks.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(points),ink));
+    if(ml%10===0){
+      const canvas=document.createElement('canvas');canvas.width=256;canvas.height=96;
+      const ctx=canvas.getContext('2d');ctx.fillStyle='#654457';ctx.font='600 54px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(ml===100?'100 mL':String(ml),128,48);
+      const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+      const label=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));label.position.set(5.8,y,4);label.scale.set(ml===100?6:3.5,1.7,1);marks.add(label);
+    }
+  }
+  liquid=new THREE.Mesh(liquidShape(initialLiquidHeight),new THREE.MeshPhysicalMaterial({color:0xff4197,roughness:.24,metalness:0,transmission:0,ior:1.34,clearcoat:1}));scene.add(liquid);
   const foamMaterial=new THREE.MeshStandardMaterial({color:0xff4197,roughness:.96,metalness:0,transparent:true,opacity:.93,bumpMap:foamTexture(),bumpScale:.24});
   foam=new THREE.InstancedMesh(new THREE.SphereGeometry(1,10,8),foamMaterial,maxParticles);foam.instanceMatrix.setUsage(THREE.DynamicDrawUsage);foam.count=0;foam.castShadow=true;foam.receiveShadow=true;foam.frustumCulled=false;scene.add(foam);
   const observer=new ResizeObserver(()=>{const w=container.clientWidth,h=container.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();});observer.observe(container);
@@ -94,7 +104,7 @@ function init(){
 }
 function resetCamera(){if(!camera)return;if(running||finished){camera.position.set(190,260,220);controls.target.set(0,70,0);}else{camera.position.set(85,150,100);controls.target.set(0,18,0);}controls.update();}
 $('camera-reset').addEventListener('click',resetCamera);
-function reset(){running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(11.5);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';}
+function reset(){running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(initialLiquidHeight);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';}
 $('reset').addEventListener('click',reset);
 $('erupt').addEventListener('click',()=>{
   if(!renderer||running)return;
@@ -113,7 +123,7 @@ function tick(dt){
     elapsed+=dt;geometryTimer+=dt;
     const progress=Math.min(1,elapsed/reaction.duration),decay=1-progress;
     if(progress<1){emission+=dt*(300+250*reaction.strength)*(.3+.7*decay);while(emission>=1){emit();emission--;}}
-    if(geometryTimer>.09){setLiquid(1.1+10.4*(1-progress));liquid.geometry.computeBoundingBox();geometryTimer=0;}
+    if(geometryTimer>.09){setLiquid(liquidBase+.1+(initialLiquidHeight-liquidBase-.1)*(1-progress));liquid.geometry.computeBoundingBox();geometryTimer=0;}
     showResults(1-Math.pow(1-progress,1.5));
     if(progress>=1 && particles.every(p=>p.settled)){
       running=false;finished=true;showResults(1);status('實驗完成','泡沫已堆積，試試另一種配方');$('erupt').disabled=false;$('erupt').innerHTML='再次噴發 <span>↗</span>';
@@ -130,8 +140,8 @@ function tick(dt){
       if(spread){p.vx+=(p.x/radial*5+Math.sin(p.age*5+i)*3)*dt;p.vz+=(p.z/radial*5+Math.cos(p.age*5+i)*3)*dt;}
       else {p.vx+=(-p.x*1.8+Math.sin(i+p.age*7))*dt;p.vz+=(-p.z*1.8+Math.cos(i+p.age*7))*dt;}
       p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
-      // Resolve contact with the widening glass body and slide to its base.
-      const radius=p.y<26?12.5-p.y*.32:3.8;
+      // Resolve contact with the straight cylinder wall and its broad foot.
+      const radius=p.y<1.4?8:5.25;
       const dist=Math.hypot(p.x,p.z);
       if(p.vy<0&&p.y<35&&p.y>1&&dist<radius+p.r){
         const a=dist>.1?Math.atan2(p.z,p.x):i*2.4;
