@@ -92,15 +92,15 @@ function init(){
   // Read-only diagnostics for automated browser checks.
   window.lab={get state(){return {running,finished,elapsed,particles:particles.length,settled:particles.filter(p=>p.settled).length,liquidHeight:liquid.geometry.boundingBox?.max.y??null,estimate:reaction};},estimate};
 }
-function resetCamera(){if(!camera)return;camera.position.set(190,260,220);controls.target.set(0,70,0);controls.update();}
+function resetCamera(){if(!camera)return;if(running||finished){camera.position.set(190,260,220);controls.target.set(0,70,0);}else{camera.position.set(85,150,100);controls.target.set(0,18,0);}controls.update();}
 $('camera-reset').addEventListener('click',resetCamera);
-function reset(){running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(11.5);showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';}
+function reset(){running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(11.5);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';}
 $('reset').addEventListener('click',reset);
 $('erupt').addEventListener('click',()=>{
   if(!renderer||running)return;
   const h=Number($('h2o2').value),ki=Number($('ki').value);reset();reaction=estimate(h,ki);
   if(!h||!ki){status('沒有噴發','H₂O₂ 與 KI 濃度都需大於 0%');return;}
-  foam.material.color.copy(color);running=true;status('反應進行中','氧氣釋放，泡沫正在綻放');$('erupt').disabled=true;$('erupt').textContent='實驗進行中…';
+  foam.material.color.copy(color);running=true;resetCamera();status('反應進行中','氧氣釋放，泡沫正在綻放');$('erupt').disabled=true;$('erupt').textContent='實驗進行中…';
 });
 function emit(){
   if(particles.length>=maxParticles)return;
