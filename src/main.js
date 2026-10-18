@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import './style.css';
+import { catalysts, estimate } from './chemistry.js';
 
 const $ = id => document.getElementById(id);
 const inputs = ['h2o2','ki','red','green','blue'];
@@ -34,16 +35,17 @@ for(const id of inputs){
   if(range)range.addEventListener('input',()=>{$(id).value=range.value;});
 }
 $('pink').addEventListener('click',()=>{['red','green','blue'].forEach((id,i)=>$(id).value=[255,65,151][i]);updateColor();});
-
-// Fixed teaching model: 100 mL peroxide solution plus 10 mL catalyst/soap.
-// KI changes reaction time, not the theoretical oxygen yield.
-export function estimate(h,ki){
-  if(h<=0||ki<=0)return {volume:0,weight:0,duration:0,strength:0};
-  const peroxideMass=100*1.11*h/100;
-  const oxygenLiters=(peroxideMass/34.0147/2)*24.0;
-  return {volume:oxygenLiters*0.55+0.11,weight:111+10-peroxideMass/34.0147/2*31.998,
-    duration:12-7*Math.sqrt(ki/100),strength:Math.sqrt(h/100)*(.45+.55*Math.sqrt(ki/100))};
+for(const [id,catalyst] of Object.entries(catalysts)){
+  const option=document.createElement('option');option.value=id;option.textContent=`${catalyst.name} · ${catalyst.formula}`;$('catalyst').append(option);
 }
+function updateCatalyst(){
+  const catalyst=catalysts[$('catalyst').value];
+  $('catalyst-note').textContent=catalyst.note;
+  $('amount-label').textContent=$('catalyst').value==='ki'?'KI 濃度':'添加量（相對值）';
+  $('ki').setAttribute('aria-label',$('amount-label').textContent);
+  $('ki-range').setAttribute('aria-label',$('amount-label').textContent+'滑桿');
+}
+$('catalyst').addEventListener('change',updateCatalyst);updateCatalyst();
 function status(title,detail){$('status').replaceChildren(document.createTextNode(title));const small=document.createElement('span');small.textContent=detail;$('status').append(small);}
 function showResults(fraction){
   $('volume').innerHTML=`${((reaction?.volume||0)*fraction).toFixed(2)} <em>L</em>`;
@@ -108,9 +110,11 @@ function reset(){running=false;finished=false;elapsed=0;reaction=null;emission=0
 $('reset').addEventListener('click',reset);
 $('erupt').addEventListener('click',()=>{
   if(!renderer||running)return;
-  const h=Number($('h2o2').value),ki=Number($('ki').value);reset();reaction=estimate(h,ki);
-  if(!h||!ki){status('沒有噴發','H₂O₂ 與 KI 濃度都需大於 0%');return;}
-  foam.material.color.copy(color);running=true;resetCamera();status('反應進行中','氧氣釋放，泡沫正在綻放');$('erupt').disabled=true;$('erupt').textContent='實驗進行中…';
+  const h=Number($('h2o2').value),amount=Number($('ki').value),id=$('catalyst').value,catalyst=catalysts[id];reset();reaction=estimate(h,amount,id);
+  if(!h||!amount){status('沒有噴發','H₂O₂ 濃度與添加量都需大於 0%');return;}
+  if(catalyst.unsupported){$('volume').innerHTML='— <em>L</em>';$('weight').innerHTML='— <em>g</em>';status('尚未建立反應模型','KMnO₄ 是反應物選項，非 MnO₂ 催化模型');return;}
+  if(!reaction.duration){status('比較組：沒有明顯噴發',`${catalyst.formula} 在本模型中不促進分解`);return;}
+  foam.material.color.copy(color);running=true;resetCamera();status('反應進行中',`${catalyst.name} · 教學示意反應`);$('erupt').disabled=true;$('erupt').textContent='實驗進行中…';
 });
 function emit(){
   if(particles.length>=maxParticles)return;
