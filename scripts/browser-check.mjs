@@ -1,0 +1,48 @@
+import fs from 'node:fs';
+const artifactDir=process.env.BROWSER_ARTIFACT_DIR||'/tmp/sakura-lab-check';fs.mkdirSync(artifactDir,{recursive:true});
+const pages=await fetch('http://127.0.0.1:9222/json').then(r=>r.json());
+const ws=new WebSocket(pages[0].webSocketDebuggerUrl);await new Promise(r=>ws.addEventListener('open',r,{once:true}));
+let id=0;const pending=new Map(),errors=[];ws.addEventListener('message',e=>{const m=JSON.parse(e.data);if(m.id){pending.get(m.id)?.(m);pending.delete(m.id);}if(m.method==='Runtime.exceptionThrown')errors.push(m.params.exceptionDetails);});
+const send=(method,params={})=>new Promise(r=>{const n=++id;pending.set(n,r);ws.send(JSON.stringify({id:n,method,params}));});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true});if(r.result.exceptionDetails)throw Error(JSON.stringify(r.result.exceptionDetails));return r.result.result.value;};
+function assert(ok,msg){if(!ok)throw Error(msg);console.log('PASS',msg);}
+await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});
+await send('Page.navigate',{url:process.argv[2]||'http://127.0.0.1:5174/'});
+for(let i=0;i<30;i++){await wait(500);if(await evaluate('!!window.lab'))break;}
+assert(await evaluate('!!window.lab'),'WebGL scene initializes');
+const input=async(id,value)=>evaluate(`document.getElementById('${id}').value='${value}';document.getElementById('${id}').dispatchEvent(new Event('input'))`);
+const select=async id=>evaluate(`document.getElementById('catalyst').value='${id}';document.getElementById('catalyst').dispatchEvent(new Event('change'))`);
+const click=async id=>evaluate(`document.getElementById('${id}').click()`);
+assert(await evaluate("document.getElementById('catalyst').options.length===10 && ![...document.getElementById('catalyst').options].some(x=>x.value==='kmno4')"),'Exact ten options, no KMnO4');
+await input('ki',42.5);assert(await evaluate("document.getElementById('catalyst-concentration').value==='42.5' && document.getElementById('ki-range').value==='42.5'"),'Legacy KI synchronizes new control');
+await input('catalyst-concentration-range',67);assert(await evaluate("document.getElementById('ki').value==='67'"),'New slider synchronizes legacy KI');
+await select('mno2');await input('catalyst-concentration',55);await input('ki-range',23);
+assert(await evaluate("document.getElementById('catalyst-concentration').value==='55' && document.getElementById('concentration-basis').textContent.includes('名義')"),'Solid basis and independent KI memory');
+await select('ki');assert(await evaluate("document.getElementById('catalyst-concentration').value==='23'"),'Switch back restores shared KI value');
+await input('catalyst-concentration',150);assert(await evaluate("document.getElementById('catalyst-concentration').value==='100'"),'Clamp above 100');
+await input('catalyst-concentration',-10);assert(await evaluate("document.getElementById('ki').value==='0'"),'Clamp below zero');
+for(const id of ['ki','mno2','yeast','fecl2','fecl3','feso4','ferricSulfate','cuso4','mgso4','nacl']){
+ await select(id);await input('catalyst-concentration',50);await click('erupt');
+ assert(await evaluate(`lab.state.estimate.catalystId==='${id}' && lab.state.estimate.concentration===50`),'3D uses snapshot for '+id);await click('reset');
+}
+await select('yeast');assert(await evaluate("document.getElementById('concentration-basis').textContent.includes('菌質量')"),'Yeast biomass basis');
+await click('add-comparison');await select('fecl2');await click('add-comparison');await select('feso4');await click('add-comparison');
+assert(await evaluate("document.querySelectorAll('#comparison-rows tr').length===3 && document.getElementById('comparison-rows').innerText.includes('非實驗測量結果') && document.getElementById('comparison-rows').innerText.includes('FeSO₄')"),'Comparison shows model metrics and limitations');
+await input('h2o2',60);await click('add-comparison');assert(await evaluate("lab.state.comparison.length===3 && document.getElementById('comparison-message').innerText.includes('相同')"),'Mixed peroxide comparison rejected');
+await evaluate("document.querySelector('#comparison-rows button').click()");assert(await evaluate('lab.state.comparison.length===2'),'Individual removal');await click('clear-comparison');assert(await evaluate('lab.state.comparison.length===0'),'Clear comparison');
+await input('red',0);await input('green',128);await input('blue',255);assert(await evaluate("document.getElementById('hex').textContent==='#0080FF'"),'RGB retained');
+await input('h2o2',100);await select('ki');await input('catalyst-concentration',100);await click('erupt');await wait(1500);
+assert(await evaluate('lab.state.particles>0 && lab.state.liquidHeight<31'),'Foam and liquid progress');await click('pause');const before=await evaluate('lab.state.elapsed');await wait(1200);assert(await evaluate('lab.state.paused && lab.state.elapsed==='+before),'Pause freezes simulated time');
+await select('yeast');await input('catalyst-concentration',20);assert(await evaluate("lab.state.estimate.catalystId==='ki' && lab.state.estimate.concentration===100"),'Editing during run preserves active snapshot');
+await click('pause');await wait(1200);assert(await evaluate('!lab.state.paused && lab.state.elapsed>'+before),'Resume progresses');
+const finishDeadline=Date.now()+90000;while(Date.now()<finishDeadline && !(await evaluate('lab.state.finished')))await wait(1000);assert(await evaluate('lab.state.finished && lab.state.settled>0'),'Reaction finishes with persistent foam');await click('reset');assert(await evaluate("lab.state.particles===0 && !lab.state.running && !lab.state.paused && !document.getElementById('effect-summary').textContent.includes('已鎖定')"),'Reset clears and unlocks');
+await input('h2o2',0);await click('erupt');assert(await evaluate('!lab.state.running && lab.state.particles===0'),'Zero peroxide never erupts');
+await input('h2o2',30);await input('catalyst-concentration',0);await click('erupt');await wait(2000);assert(await evaluate('lab.state.running && lab.state.particles>0 && lab.state.estimate.relativeRate>0'),'Zero catalyst retains background process');await click('reset');
+await click('add-comparison');
+assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'Desktop no horizontal overflow');
+let shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(`${artifactDir}/desktop.png`,Buffer.from(shot.result.data,'base64'));
+await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});await wait(1500);
+assert(await evaluate('document.documentElement.scrollWidth<=innerWidth'),'Mobile table scrolls within its container');
+shot=await send('Page.captureScreenshot',{format:'png',captureBeyondViewport:true});fs.writeFileSync(`${artifactDir}/mobile.png`,Buffer.from(shot.result.data,'base64'));
+assert(errors.length===0,'No unhandled browser exceptions');ws.close();

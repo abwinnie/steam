@@ -1,28 +1,46 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {catalysts,estimate} from '../src/chemistry.js';
-test('all ten additives are available with distinct manganese compounds',()=>{
-  assert.equal(Object.keys(catalysts).length,10);
-  assert.equal(catalysts.mno2.formula,'MnO₂');assert.equal(catalysts.kmno4.formula,'KMnO₄');
+import {catalysts,calculateCatalystEffect,calculateSimulation} from '../src/chemistry.js';
+import {createSettings,createComparison} from '../src/settings.js';
+test('exact ten systems with distinct iron oxidation states and no permanganate',()=>{
+ assert.deepEqual(Object.keys(catalysts),['ki','mno2','yeast','fecl2','fecl3','feso4','ferricSulfate','cuso4','mgso4','nacl']);
+ assert.equal(catalysts.feso4.formula,'FeSO₄');assert.equal(catalysts.ferricSulfate.formula,'Fe₂(SO₄)₃');
+ for(const c of Object.values(catalysts))for(const key of ['id','name','formula','type','concentrationBasis','modelCoefficient','evidenceLevel','notes'])assert.ok(c[key]!==undefined);
+ assert.match(catalysts.mno2.concentrationBasis,/名義/);assert.match(catalysts.yeast.concentrationBasis,/菌質量/);
 });
-test('zero concentration, zero amount and comparison groups do not erupt',()=>{
-  for(const id of Object.keys(catalysts)){
-    assert.equal(estimate(0,50,id).duration,0);assert.equal(estimate(30,0,id).duration,0);
-  }
-  for(const id of ['nacl','mgso4','kmno4','unknown'])assert.equal(estimate(30,50,id).volume,0);
+test('zero peroxide never erupts; zero catalyst retains explicit background',()=>{
+ for(const id of Object.keys(catalysts)){
+  const zero=calculateSimulation({h2o2:0,catalystId:id,concentration:100});
+  assert.equal(zero.emissionRate,0);assert.equal(zero.maxHeight,0);assert.equal(zero.volumeIndex,0);assert.equal(zero.mass,0);
+  assert.ok(calculateSimulation({h2o2:30,catalystId:id,concentration:0}).relativeRate>0);
+ }
 });
-test('catalytic rate changes time without inventing additional oxygen or mass',()=>{
-  const reference=estimate(30,50,'ki');
-  for(const [id,c] of Object.entries(catalysts))if(c.rate){
-    const r=estimate(30,50,id);assert.equal(r.volume,reference.volume);assert.equal(r.weight,reference.weight);assert.ok(r.duration>0);
-    assert.ok(estimate(30,100,id).duration<estimate(30,10,id).duration);
-  }
-  assert.ok(estimate(30,50,'fecl2').duration<estimate(30,50,'fecl3').duration);
-  assert.ok(estimate(30,50,'cuso4').duration>estimate(30,50,'mno2').duration);
-  assert.ok(estimate(30,50,'mno2').duration>estimate(30,50,'ferricSulfate').duration);
+test('nonlinear systems and conditions do not encode previous unsupported salt rankings',()=>{
+ assert.ok(calculateCatalystEffect('yeast',40).relativeRate>calculateCatalystEffect('yeast',100).relativeRate);
+ assert.ok(calculateCatalystEffect('mno2',30,{surfaceFactor:2}).relativeRate>calculateCatalystEffect('mno2',30,{surfaceFactor:.5}).relativeRate);
+ assert.equal(calculateCatalystEffect('fecl2',30).relativeRate,calculateCatalystEffect('fecl3',30).relativeRate);
+ assert.equal(calculateCatalystEffect('feso4',30).relativeRate,calculateCatalystEffect('ferricSulfate',30).relativeRate);
+ assert.ok(calculateCatalystEffect('nacl',50).relativeRate>calculateCatalystEffect('nacl',0).relativeRate);
 });
-test('more peroxide increases oxygen estimate and values remain bounded',()=>{
-  assert.ok(estimate(60,50).volume>estimate(30,50).volume);
-  assert.deepEqual(estimate(200,200),estimate(100,100));
-  assert.equal(estimate(NaN,50).volume,0);
+test('all animation parameters share a bounded model and ballistic height',()=>{
+ for(const catalystId of Object.keys(catalysts))for(const concentration of [0,10,50,100]){
+  const r=calculateSimulation({catalystId,concentration});
+  for(const key of ['relativeRate','duration','launchSpeed','maxHeight','emissionRate','spread','progressExponent','volumeIndex','mass'])assert.ok(Number.isFinite(r[key])&&r[key]>=0,key);
+  assert.equal(r.maxHeight,r.launchSpeed**2/(2*r.gravity));assert.match(r.notice,/未經實驗校正/);
+ }
+ assert.deepEqual(calculateSimulation({h2o2:200,concentration:200}),calculateSimulation({h2o2:100,concentration:100}));
+ assert.throws(()=>calculateCatalystEffect('kmno4',10),RangeError);
+});
+test('KI controls share state while other concentrations are independent',()=>{
+ const model=createSettings();model.setConcentration(25,'ki');assert.equal(model.snapshot().concentration,25);
+ model.select('mno2');model.setConcentration(70);model.setConcentration(40,'ki');assert.equal(model.snapshot().concentration,70);
+ model.select('ki');assert.equal(model.snapshot().concentration,40);
+ model.setConcentration(-5);assert.equal(model.snapshot().concentration,0);model.setConcentration(125);assert.equal(model.snapshot().concentration,100);
+});
+test('comparison freezes model snapshots and rejects mixed peroxide conditions',()=>{
+ const settings=createSettings(),list=createComparison();list.add(settings.snapshot());settings.select('feso4');settings.setConcentration(45);list.add(settings.snapshot());
+ assert.equal(list.rows.length,2);assert.equal(list.rows[0].catalystId,'ki');assert.equal(list.rows[1].concentration,45);
+ settings.setH2o2(60);assert.throws(()=>list.add(settings.snapshot()),/相同/);assert.equal(list.rows.length,2);
+ const copy=list.rows;copy[0].mass=-100;assert.ok(list.rows[0].mass>=0);
+ list.remove(list.rows[0].rowId);assert.equal(list.baseline,30);list.clear();assert.equal(list.baseline,null);list.add(settings.snapshot());assert.equal(list.baseline,60);
 });
