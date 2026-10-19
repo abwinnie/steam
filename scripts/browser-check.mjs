@@ -28,6 +28,7 @@ for(const id of ['ki','mno2','yeast','fecl2','fecl3','feso4','ferricSulfate','cu
  assert(await evaluate(`lab.state.estimate.catalystId==='${id}' && lab.state.estimate.concentration===50`),'3D uses snapshot for '+id);await click('reset');
 }
 await select('yeast');assert(await evaluate("document.getElementById('concentration-basis').textContent.includes('菌質量')"),'Yeast biomass basis');
+assert(await evaluate('lab.state.comparison.length===10'),'Simulation history automatically fills comparison');await click('clear-comparison');
 await click('add-comparison');await select('fecl2');await click('add-comparison');await select('feso4');await click('add-comparison');
 assert(await evaluate("document.querySelectorAll('#comparison-rows tr').length===3 && document.getElementById('comparison-rows').innerText.includes('非實驗測量結果') && document.getElementById('comparison-rows').innerText.includes('FeSO₄')"),'Comparison shows model metrics and limitations');
 await input('h2o2',60);await click('add-comparison');assert(await evaluate("lab.state.comparison.length===3 && document.getElementById('comparison-message').innerText.includes('相同')"),'Mixed peroxide comparison rejected');

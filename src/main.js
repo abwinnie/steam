@@ -66,16 +66,20 @@ $('catalyst').addEventListener('change',()=>{settings.select($('catalyst').value
 refreshSettings();
 function renderComparison(){
  const tbody=$('comparison-rows');tbody.replaceChildren();
+ const group=$('comparison-group');group.replaceChildren();
+ for(const h of comparison.groups){const option=document.createElement('option');option.value=h;option.textContent=`H₂O₂ ${h}%`;group.append(option);}
+ if(comparison.baseline!==null)group.value=comparison.baseline;group.disabled=!comparison.groups.length;
  for(const row of comparison.rows){
   const catalyst=catalysts[row.catalystId],tr=document.createElement('tr');
-  for(const text of [`${catalyst.name} · ${catalyst.formula}`,row.h2o2,row.concentration,Number(row.relativeRate.toPrecision(2)),Math.round(row.maxHeight),row.volumeIndex.toFixed(1),row.mass.toFixed(1),`${MODEL_NOTICE} ${catalyst.concentrationBasis} ${catalyst.notes}`]){
+  for(const text of [`${row.sourceRunId!==undefined?'第 '+row.sourceRunId+' 次 · '+row.status+' · ':''}${catalyst.name} · ${catalyst.formula}`,row.h2o2,row.concentration,Number(row.relativeRate.toPrecision(2)),Math.round(row.maxHeight),row.volumeIndex.toFixed(1),row.mass.toFixed(1),`${MODEL_NOTICE} ${catalyst.concentrationBasis} ${catalyst.notes}`]){
    const td=document.createElement('td');td.textContent=text;tr.append(td);
   }
   const td=document.createElement('td'),button=document.createElement('button');button.textContent='移除';button.setAttribute('aria-label',`移除 ${catalyst.name} 比較項目`);button.addEventListener('click',()=>{comparison.remove(row.rowId);renderComparison();});td.append(button);tr.append(td);tbody.append(tr);
  }
- $('comparison-message').textContent=comparison.rows.length?`已保存 ${comparison.rows.length} 筆 · 固定 H₂O₂ ${comparison.baseline}% · 僅本次頁面工作階段保存`:'尚未加入設定。選擇催化系統後按「加入催化劑比較」。';
+ $('comparison-message').textContent=comparison.rows.length?`顯示 ${comparison.rows.length} 筆 · 相同 H₂O₂ ${comparison.baseline}% · 共 ${comparison.groups.length} 組條件 · 模擬紀錄自動加入，僅本次頁面保存`:'尚無比較資料。開始新模擬會自動加入，也可按「加入催化劑比較」手動新增。';
 }
 $('add-comparison').addEventListener('click',()=>{try{comparison.add(settings.snapshot());renderComparison();}catch(error){$('comparison-message').textContent=error.message;}});
+$('comparison-group').addEventListener('change',()=>{comparison.selectBaseline($('comparison-group').value);renderComparison();});
 $('clear-comparison').addEventListener('click',()=>{comparison.clear();renderComparison();});
 function renderHistory(){
  const tbody=$('history-rows');tbody.replaceChildren();
@@ -88,6 +92,7 @@ function renderHistory(){
  }
  $('history-message').textContent=history.rows.length?`本次頁面已記錄 ${history.rows.length} 次模擬；重新調配不會刪除紀錄，重新整理頁面則會清除。`:'尚未開始模擬。每次按「開始噴發」會自動新增一筆，無須手動加入。';
  $('clear-history').disabled=running;
+ comparison.syncHistory(history.rows);renderComparison();
 }
 function updateHistory(state){if(activeRun!==null)history.update(activeRun,state);renderHistory();}
 $('clear-history').addEventListener('click',()=>{if(running)return;history.clear();activeRun=null;renderHistory();});

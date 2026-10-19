@@ -77,3 +77,17 @@ test('visual gain preserves zero/low-effect distinctions and bounded particle co
  }
  assert.ok(calculateSimulation({h2o2:100,concentration:100}).visualParticleBudget>=normal.visualParticleBudget);
 });
+
+test('history automatically populates comparison groups without duplicates or mixed conditions',async()=>{
+ const {createHistory}=await import('../src/settings.js');const history=createHistory(),list=createComparison(),settings=createSettings();
+ const first=history.add(settings.snapshot(),'#FF4197');settings.select('mno2');history.add(settings.snapshot(),'#FF4197');
+ list.syncHistory(history.rows);assert.equal(list.rows.length,2);assert.equal(list.baseline,30);
+ history.update(first,'已完成');list.syncHistory(history.rows);assert.equal(list.rows.length,2);assert.equal(list.rows[0].status,'已完成');
+ settings.setH2o2(60);history.add(settings.snapshot(),'#FF4197');list.syncHistory(history.rows);
+ assert.deepEqual(list.groups,[30,60]);assert.equal(list.baseline,60);assert.equal(list.rows.length,1);
+ list.selectBaseline(30);list.syncHistory(history.rows);assert.equal(list.rows.length,2);assert.ok(list.rows.every(row=>row.h2o2===30));
+ const removeId=list.rows[0].rowId;list.remove(removeId);list.syncHistory(history.rows);assert.equal(list.rows.length,1);
+ list.clear();list.syncHistory(history.rows);assert.equal(list.rows.length,0);assert.deepEqual(list.groups,[]);
+ history.add(settings.snapshot(),'#0080FF');list.syncHistory(history.rows);assert.equal(list.rows.length,1);assert.equal(list.baseline,60);
+ history.clear();list.syncHistory(history.rows);assert.equal(list.rows.length,1,'clearing history does not destroy saved comparison snapshots');
+});
