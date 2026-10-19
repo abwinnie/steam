@@ -44,3 +44,15 @@ test('comparison freezes model snapshots and rejects mixed peroxide conditions',
  const copy=list.rows;copy[0].mass=-100;assert.ok(list.rows[0].mass>=0);
  list.remove(list.rows[0].rowId);assert.equal(list.baseline,30);list.clear();assert.equal(list.baseline,null);list.add(settings.snapshot());assert.equal(list.baseline,60);
 });
+
+test('automatic history retains every snapshot independently of live settings',async()=>{
+ const {createHistory}=await import('../src/settings.js');const history=createHistory(),settings=createSettings();
+ const id=history.add(settings.snapshot(),'#FF4197');settings.setH2o2(60);settings.select('yeast');
+ history.update(id,'已暫停');history.update(id,'進行中');history.update(id,'已重設（未完成）');
+ const next=history.add(settings.snapshot(),'#0080FF');history.update(next,'已完成');
+ assert.equal(history.rows.length,2);assert.equal(history.rows[0].h2o2,30);assert.equal(history.rows[0].catalystId,'ki');
+ assert.equal(history.rows[0].color,'#FF4197');assert.equal(history.rows[0].status,'已重設（未完成）');assert.equal(history.rows[1].status,'已完成');
+ const copy=history.rows;copy[0].status='wrong';assert.notEqual(history.rows[0].status,'wrong');
+ settings.setH2o2(0);history.add(settings.snapshot(),'#000000');assert.equal(history.rows[2].status,'未噴發');assert.equal(history.rows[2].mass,0);
+ history.clear();assert.equal(history.rows.length,0);
+});

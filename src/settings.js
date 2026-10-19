@@ -7,3 +7,7 @@ export function createComparison(){
  let baseline=null,rows=[],nextId=1;
  return {get baseline(){return baseline;},get rows(){return rows.map(row=>({...row}));},add(result){if(baseline!==null&&result.h2o2!==baseline)throw new Error('請保持相同 H₂O₂ 濃度，或清空清單後建立新的比較。');if(rows.length>=20)throw new Error('比較清單最多保存 20 筆，請先移除部分項目。');baseline=result.h2o2;rows.push({...result,rowId:nextId++});},remove(id){rows=rows.filter(row=>row.rowId!==id);if(!rows.length)baseline=null;},clear(){rows=[];baseline=null;}};
 }
+export function createHistory(){
+ let rows=[],nextId=1;
+ return {get rows(){return rows.map(row=>({...row}));},add(result,color){const rowId=nextId++;rows.push({...result,color,rowId,status:result.h2o2===0?'未噴發':'進行中'});return rowId;},update(rowId,status){const row=rows.find(row=>row.rowId===rowId);if(row)row.status=status;},clear(){rows=[];}};
+}

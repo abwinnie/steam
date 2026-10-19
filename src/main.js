@@ -3,11 +3,13 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import './style.css';
 import { catalysts, estimate, MODEL_NOTICE } from './chemistry.js';
-import { createSettings, createComparison } from './settings.js';
+import { createSettings, createComparison, createHistory } from './settings.js';
 
 const $ = id => document.getElementById(id);
 const inputs = ['red','green','blue'];
 const settings=createSettings(), comparison=createComparison();
+const history=createHistory();
+let activeRun=null;
 let paused=false;
 const color = new THREE.Color();
 let running = false, finished = false, elapsed = 0, reaction = null;
@@ -75,6 +77,20 @@ function renderComparison(){
 }
 $('add-comparison').addEventListener('click',()=>{try{comparison.add(settings.snapshot());renderComparison();}catch(error){$('comparison-message').textContent=error.message;}});
 $('clear-comparison').addEventListener('click',()=>{comparison.clear();renderComparison();});
+function renderHistory(){
+ const tbody=$('history-rows');tbody.replaceChildren();
+ for(const row of history.rows){
+  const tr=document.createElement('tr'),catalyst=catalysts[row.catalystId];
+  for(const value of [row.rowId,row.status,`${catalyst.name} · ${catalyst.formula}`,row.h2o2,row.concentration,row.color,Number(row.relativeRate.toPrecision(2)),Math.round(row.maxHeight),row.volumeIndex.toFixed(1),row.mass.toFixed(1)]){
+   const td=document.createElement('td');td.textContent=value;tr.append(td);
+  }
+  tbody.append(tr);
+ }
+ $('history-message').textContent=history.rows.length?`本次頁面已記錄 ${history.rows.length} 次模擬；重新調配不會刪除紀錄，重新整理頁面則會清除。`:'尚未開始模擬。每次按「開始噴發」會自動新增一筆，無須手動加入。';
+ $('clear-history').disabled=running;
+}
+function updateHistory(state){if(activeRun!==null)history.update(activeRun,state);renderHistory();}
+$('clear-history').addEventListener('click',()=>{if(running)return;history.clear();activeRun=null;renderHistory();});
 function status(title,detail){$('status').replaceChildren(document.createTextNode(title));const small=document.createElement('span');small.textContent=detail;$('status').append(small);}
 function showResults(fraction){
   $('volume').innerHTML=`${((reaction?.volumeIndex||0)*fraction).toFixed(1)} <em>指數</em>`;
@@ -131,18 +147,18 @@ function init(){
   updateColor();
   let last=performance.now();renderer.setAnimationLoop(now=>{let remaining=Math.min((now-last)/1000,.5);last=now;while(remaining>0){const dt=Math.min(remaining,.025);if(!paused)tick(dt);remaining-=dt;}controls.update();renderer.render(scene,camera);});
   // Read-only diagnostics for automated browser checks.
-  window.lab={get state(){return {running,paused,finished,elapsed,particles:particles.length,settled:particles.filter(p=>p.settled).length,liquidHeight:liquid.geometry.boundingBox?.max.y??null,estimate:reaction,settings:structuredClone(settings.state),comparison:comparison.rows};},estimate};
+  window.lab={get state(){return {running,paused,finished,elapsed,particles:particles.length,settled:particles.filter(p=>p.settled).length,liquidHeight:liquid.geometry.boundingBox?.max.y??null,estimate:reaction,settings:structuredClone(settings.state),comparison:comparison.rows,history:history.rows};},estimate};
 }
 function resetCamera(){if(!camera)return;if(running||finished){camera.position.set(190,260,220);controls.target.set(0,70,0);}else{camera.position.set(85,150,100);controls.target.set(0,18,0);}controls.update();}
 $('camera-reset').addEventListener('click',resetCamera);
-function reset(){paused=false;$('pause').disabled=true;$('pause').textContent='暫停';running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(initialLiquidHeight);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';refreshSettings();}
+function reset(){if(running)updateHistory('已重設（未完成）');activeRun=null;paused=false;$('pause').disabled=true;$('pause').textContent='暫停';running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(initialLiquidHeight);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';refreshSettings();renderHistory();}
 $('reset').addEventListener('click',reset);
-$('pause').addEventListener('click',()=>{if(!running)return;paused=!paused;$('pause').textContent=paused?'繼續':'暫停';status(paused?'已暫停':'反應進行中',paused?'泡沫與液面已暫停，可繼續實驗':'呈現目前已鎖定的模擬條件');});
+$('pause').addEventListener('click',()=>{if(!running)return;paused=!paused;updateHistory(paused?'已暫停':'進行中');$('pause').textContent=paused?'繼續':'暫停';status(paused?'已暫停':'反應進行中',paused?'泡沫與液面已暫停，可繼續實驗':'呈現目前已鎖定的模擬條件');});
 $('erupt').addEventListener('click',()=>{
   if(!renderer||running)return;
-  reset();reaction=settings.snapshot();const catalyst=catalysts[reaction.catalystId];
-  if(!reaction.h2o2){status('沒有噴發','H₂O₂ 濃度為 0%，不產生分解驅動的泡沫');return;}
-  foam.material.color.copy(color);running=true;resetCamera();status('反應進行中',`${catalyst.name} · 非實驗測量結果`);$('erupt').disabled=true;$('erupt').textContent='實驗進行中…';$('pause').disabled=false;refreshSettings();
+  reset();reaction=settings.snapshot();activeRun=history.add(reaction,$('hex').textContent);renderHistory();const catalyst=catalysts[reaction.catalystId];
+  if(!reaction.h2o2){activeRun=null;status('沒有噴發','H₂O₂ 濃度為 0%，不產生分解驅動的泡沫');return;}
+  foam.material.color.copy(color);running=true;resetCamera();status('反應進行中',`${catalyst.name} · 非實驗測量結果`);$('erupt').disabled=true;$('erupt').textContent='實驗進行中…';$('pause').disabled=false;refreshSettings();renderHistory();
 });
 function emit(){
   if(particles.length>=maxParticles)return;
@@ -158,7 +174,7 @@ function tick(dt){
     if(geometryTimer>.09){setLiquid(initialLiquidHeight-(initialLiquidHeight-liquidBase-.1)*reaction.conversionFraction*(1-Math.pow(1-progress,reaction.progressExponent)));liquid.geometry.computeBoundingBox();geometryTimer=0;}
     showResults(1-Math.pow(1-progress,reaction.progressExponent));
     if(progress>=1 && particles.every(p=>p.settled)){
-      running=false;finished=true;$('pause').disabled=true;showResults(1);status('實驗完成','泡沫已堆積，試試另一種配方');$('erupt').disabled=false;$('erupt').innerHTML='再次噴發 <span>↗</span>';refreshSettings();
+      running=false;finished=true;updateHistory('已完成');activeRun=null;$('pause').disabled=true;showResults(1);status('實驗完成','泡沫已堆積，試試另一種配方');$('erupt').disabled=false;$('erupt').innerHTML='再次噴發 <span>↗</span>';refreshSettings();
     }else if(progress>=1)status('緩緩沉降中','反應結束，泡沫正在堆積');
   }
   for(let i=0;i<particles.length;i++){
