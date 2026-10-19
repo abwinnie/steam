@@ -17,7 +17,7 @@ let renderer, scene, camera, controls, liquid, foam, cylinder;
 const liquidBase=1.8, initialLiquidHeight=31;
 const particles = [], maxParticles = 4800, pile = new Map();
 const dummy = new THREE.Object3D();
-let emission = 0, geometryTimer = 0;
+let emission = 0, geometryTimer = 0, peakVisualHeight = 0;
 
 function clampInput(id) {
   const el=$(id), max=Number(el.max);
@@ -147,11 +147,11 @@ function init(){
   updateColor();
   let last=performance.now();renderer.setAnimationLoop(now=>{let remaining=Math.min((now-last)/1000,.5);last=now;while(remaining>0){const dt=Math.min(remaining,.025);if(!paused)tick(dt);remaining-=dt;}controls.update();renderer.render(scene,camera);});
   // Read-only diagnostics for automated browser checks.
-  window.lab={get state(){return {running,paused,finished,elapsed,particles:particles.length,settled:particles.filter(p=>p.settled).length,liquidHeight:liquid.geometry.boundingBox?.max.y??null,estimate:reaction,settings:structuredClone(settings.state),comparison:comparison.rows,history:history.rows};},estimate};
+  window.lab={get state(){return {running,paused,finished,elapsed,particles:particles.length,peakVisualHeight,settled:particles.filter(p=>p.settled).length,liquidHeight:liquid.geometry.boundingBox?.max.y??null,estimate:reaction,settings:structuredClone(settings.state),comparison:comparison.rows,history:history.rows};},estimate};
 }
 function resetCamera(){if(!camera)return;if(running||finished){camera.position.set(190,260,220);controls.target.set(0,70,0);}else{camera.position.set(85,150,100);controls.target.set(0,18,0);}controls.update();}
 $('camera-reset').addEventListener('click',resetCamera);
-function reset(){if(running)updateHistory('已重設（未完成）');activeRun=null;paused=false;$('pause').disabled=true;$('pause').textContent='暫停';running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(initialLiquidHeight);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';refreshSettings();renderHistory();}
+function reset(){if(running)updateHistory('已重設（未完成）');activeRun=null;paused=false;$('pause').disabled=true;$('pause').textContent='暫停';running=false;finished=false;elapsed=0;reaction=null;emission=0;geometryTimer=0;peakVisualHeight=0;particles.length=0;pile.clear();if(foam){foam.count=0;foam.material.color.copy(color);}setLiquid(initialLiquidHeight);resetCamera();showResults(0);status('準備就緒','等待你的下一場實驗');$('erupt').disabled=!renderer;$('erupt').innerHTML='開始噴發 <span>↗</span>';refreshSettings();renderHistory();}
 $('reset').addEventListener('click',reset);
 $('pause').addEventListener('click',()=>{if(!running)return;paused=!paused;updateHistory(paused?'已暫停':'進行中');$('pause').textContent=paused?'繼續':'暫停';status(paused?'已暫停':'反應進行中',paused?'泡沫與液面已暫停，可繼續實驗':'呈現目前已鎖定的模擬條件');});
 $('erupt').addEventListener('click',()=>{
@@ -188,6 +188,7 @@ function tick(dt){
       if(spread){p.vx+=(p.x/radial*5+Math.sin(p.age*5+i)*3)*reaction.spread*dt;p.vz+=(p.z/radial*5+Math.cos(p.age*5+i)*3)*reaction.spread*dt;}
       else {p.vx+=(-p.x*1.8+Math.sin(i+p.age*7))*dt;p.vz+=(-p.z*1.8+Math.cos(i+p.age*7))*dt;}
       p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+      peakVisualHeight=Math.max(peakVisualHeight,p.y-35);
       // Resolve contact with the straight cylinder wall and its broad foot.
       const radius=p.y<1.4?8:5.25;
       const dist=Math.hypot(p.x,p.z);

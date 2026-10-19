@@ -11,6 +11,7 @@ await send('Runtime.enable');await send('Emulation.setDeviceMetricsOverride',{wi
 await send('Page.navigate',{url:process.argv[2]||'http://127.0.0.1:5174/'});
 for(let i=0;i<30;i++){await wait(500);if(await evaluate('!!window.lab'))break;}
 assert(await evaluate('!!window.lab'),'WebGL scene initializes');
+assert(await evaluate('lab.estimate(30,10).maxHeight>=105 && lab.estimate(30,10).visualParticleBudget===3600'),'Default 30% high dense visual calibration');
 const input=async(id,value)=>evaluate(`document.getElementById('${id}').value='${value}';document.getElementById('${id}').dispatchEvent(new Event('input'))`);
 const select=async id=>evaluate(`document.getElementById('catalyst').value='${id}';document.getElementById('catalyst').dispatchEvent(new Event('change'))`);
 const click=async id=>evaluate(`document.getElementById('${id}').click()`);

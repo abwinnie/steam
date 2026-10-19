@@ -56,3 +56,24 @@ test('automatic history retains every snapshot independently of live settings',a
  settings.setH2o2(0);history.add(settings.snapshot(),'#000000');assert.equal(history.rows[2].status,'未噴發');assert.equal(history.rows[2].mass,0);
  history.clear();assert.equal(history.rows.length,0);
 });
+
+test('default 30% peroxide restores dense high eruption without changing model indicators',()=>{
+ const r=calculateSimulation();
+ assert.ok(r.maxHeight>=3*35,'default column rises at least three cylinder heights above its mouth');
+ assert.ok(r.emissionRate>=280,'default stream stays dense');
+ assert.equal(r.visualParticleBudget,3600);
+ assert.ok(Math.abs(r.emissionRate*r.duration*.65-r.visualParticleBudget)<1e-9);
+ assert.ok(Math.abs(r.relativeRate-.1942662114811742)<1e-12,'relative kinetic indicator is unchanged');
+ assert.ok(Math.abs(r.volumeIndex-19.648229998071947)<1e-10,'volume index is unchanged');
+ assert.equal(r.mass,r.volumeIndex);
+});
+test('visual gain preserves zero/low-effect distinctions and bounded particle cost',()=>{
+ const normal=calculateSimulation(),background=calculateSimulation({concentration:0});
+ assert.ok(background.maxHeight<normal.maxHeight/3);assert.ok(background.visualParticleBudget<normal.visualParticleBudget/2);
+ for(const catalystId of Object.keys(catalysts))for(const h2o2 of [0,.1,30,100])for(const concentration of [0,10,100]){
+  const r=calculateSimulation({catalystId,h2o2,concentration});
+  assert.ok(r.visualParticleBudget<=4800);assert.ok(r.visualParticleBudget>=0);
+  if(h2o2===0){assert.equal(r.visualParticleBudget,0);assert.equal(r.emissionRate,0);assert.equal(r.maxHeight,0);}
+ }
+ assert.ok(calculateSimulation({h2o2:100,concentration:100}).visualParticleBudget>=normal.visualParticleBudget);
+});

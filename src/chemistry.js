@@ -27,19 +27,31 @@ export function calculateCatalystEffect(catalystId,concentration,conditions={}){
  if(catalyst.type==='metal-salt')response*=limit(conditions.conditionFactor??1,0,2)*(.75-.2*c);
  return {catalystId,concentration:clampPercent(concentration),relativeRate:background+catalyst.modelCoefficient*response,background,evidenceLevel:catalyst.evidenceLevel,notice:MODEL_NOTICE};
 }
+// Calibrate presentation against the original 30% H₂O₂ / 10% KI scene.
+// This gain and particle budget are visual settings, not kinetic constants.
+const visualReferenceEffect=calculateCatalystEffect('ki',10).relativeRate;
+const visualReferenceRate=visualReferenceEffect*Math.sqrt(.3);
+const visualGain=-Math.log(.2)/visualReferenceRate;
+const visualReferenceVolume=30*(1-Math.exp(-visualReferenceEffect*3));
 export function calculateSimulation({h2o2=30,catalystId='ki',concentration=10,conditions={}}={}){
  const effect=calculateCatalystEffect(catalystId,concentration,conditions);
  const h=clampPercent(h2o2)/100;
  const relativeRate=h===0?0:effect.relativeRate*Math.sqrt(h);
- const strength=Math.min(1,relativeRate);
+ // The unnormalised rate is small at default settings. Feeding it straight
+ // into rendering made a normal eruption look like a weak background process.
+ // A shared saturating visual response restores the plume without changing
+ // catalyst effects, relative rates, conversion, or virtual mass/volume values.
+ const strength=1-Math.exp(-relativeRate*visualGain);
  const duration=h===0?0:Math.min(18,4+6/(.25+relativeRate));
  const gravity=28,launchSpeed=h===0?0:8+82*Math.sqrt(strength);
- const emissionRate=h===0?0:Math.min(4800/(duration*.65),12+500*strength);
+ const volumeIndex=h===0?0:100*h*(1-Math.exp(-effect.relativeRate*3));
+ const visualParticleBudget=Math.min(4800,Math.round(3600*(volumeIndex/visualReferenceVolume)**.6));
+ const emissionRate=h===0?0:visualParticleBudget/(duration*.65);
  return {...effect,h2o2:h*100,relativeRate,strength,duration,gravity,launchSpeed,
-  maxHeight:launchSpeed**2/(2*gravity),emissionRate,spread:.3+1.7*strength,
+  maxHeight:launchSpeed**2/(2*gravity),emissionRate,visualParticleBudget,spread:.3+1.7*strength,
   progressExponent:.8+.7*strength,conversionFraction:h===0?0:1-Math.exp(-effect.relativeRate*3),
   // Deliberately virtual indices: no conversion from particle count to oxygen.
-  volumeIndex:h===0?0:100*h*(1-Math.exp(-effect.relativeRate*3)),
+  volumeIndex,
   mass:h===0?0:100*h*(1-Math.exp(-effect.relativeRate*3)),notice:MODEL_NOTICE};
 }
 export const estimate=(h,concentration,catalystId='ki')=>calculateSimulation({h2o2:h,concentration,catalystId});
